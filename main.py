@@ -2,7 +2,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Union
 import uvicorn
 import json
 import uuid
@@ -166,13 +166,13 @@ KNOWLEDGE_BASE = [
 # MCP Protocol Models
 class MCPRequest(BaseModel):
     jsonrpc: str = "2.0"
-    id: Optional[str] = None
+    id: Optional[Union[str, int]] = None  # Accept both string and int
     method: str
     params: Optional[Dict[str, Any]] = None
 
 class MCPResponse(BaseModel):
     jsonrpc: str = "2.0"
-    id: Optional[str] = None
+    id: Optional[Union[str, int]] = None  # Accept both string and int
     result: Optional[Dict[str, Any]] = None
     error: Optional[Dict[str, Any]] = None
 
