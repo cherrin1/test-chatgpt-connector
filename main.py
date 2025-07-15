@@ -313,7 +313,22 @@ async def health_check():
 async def mcp_endpoint(request: MCPRequest):
     """Main MCP endpoint"""
     try:
-        if request.method == "tools/list":
+        if request.method == "initialize":
+            return MCPResponse(
+                id=request.id,
+                result={
+                    "protocolVersion": "2024-11-05",
+                    "capabilities": {
+                        "tools": {}
+                    },
+                    "serverInfo": {
+                        "name": "mcp-knowledge-server",
+                        "version": "1.0.0"
+                    }
+                }
+            )
+        
+        elif request.method == "tools/list":
             # Return available tools
             return MCPResponse(
                 id=request.id,
@@ -327,7 +342,7 @@ async def mcp_endpoint(request: MCPRequest):
                                 "properties": {
                                     "query": {
                                         "type": "string",
-                                        "description": "Search query - can be topics like 'machine learning', 'blockchain', 'quantum computing', etc."
+                                        "description": "Search query string"
                                     }
                                 },
                                 "required": ["query"]
@@ -341,7 +356,7 @@ async def mcp_endpoint(request: MCPRequest):
                                 "properties": {
                                     "id": {
                                         "type": "string",
-                                        "description": "Knowledge article ID to fetch full content"
+                                        "description": "Document ID to fetch"
                                     }
                                 },
                                 "required": ["id"]
@@ -358,9 +373,25 @@ async def mcp_endpoint(request: MCPRequest):
             if tool_name == "search":
                 query = arguments.get("query", "")
                 if not query:
-                    raise HTTPException(status_code=400, detail="Query parameter required")
+                    return MCPResponse(
+                        id=request.id,
+                        error={
+                            "code": -32602,
+                            "message": "Query parameter required"
+                        }
+                    )
                 
                 results = search_knowledge(query)
+                # Return results in the exact format ChatGPT expects
+                search_results = [
+                    {
+                        "id": result.id,
+                        "title": result.title,
+                        "text": result.text,
+                        "url": result.url
+                    }
+                    for result in results
+                ]
                 
                 return MCPResponse(
                     id=request.id,
@@ -368,7 +399,7 @@ async def mcp_endpoint(request: MCPRequest):
                         "content": [
                             {
                                 "type": "text",
-                                "text": json.dumps([result.dict() for result in results], indent=2)
+                                "text": json.dumps(search_results, indent=2)
                             }
                         ]
                     }
@@ -377,7 +408,13 @@ async def mcp_endpoint(request: MCPRequest):
             elif tool_name == "fetch":
                 doc_id = arguments.get("id", "")
                 if not doc_id:
-                    raise HTTPException(status_code=400, detail="ID parameter required")
+                    return MCPResponse(
+                        id=request.id,
+                        error={
+                            "code": -32602,
+                            "message": "ID parameter required"
+                        }
+                    )
                 
                 result = fetch_knowledge(doc_id)
                 if not result:
@@ -387,11 +424,20 @@ async def mcp_endpoint(request: MCPRequest):
                             "content": [
                                 {
                                     "type": "text",
-                                    "text": f"Knowledge article with ID '{doc_id}' not found"
+                                    "text": json.dumps({"error": f"Document with ID '{doc_id}' not found"})
                                 }
                             ]
                         }
                     )
+                
+                # Return fetch result in the exact format ChatGPT expects
+                fetch_result = {
+                    "id": result.id,
+                    "title": result.title,
+                    "text": result.text,
+                    "url": result.url,
+                    "metadata": result.metadata
+                }
                 
                 return MCPResponse(
                     id=request.id,
@@ -399,7 +445,7 @@ async def mcp_endpoint(request: MCPRequest):
                         "content": [
                             {
                                 "type": "text",
-                                "text": json.dumps(result.dict(), indent=2)
+                                "text": json.dumps(fetch_result, indent=2)
                             }
                         ]
                     }
@@ -413,22 +459,6 @@ async def mcp_endpoint(request: MCPRequest):
                         "message": f"Unknown tool: {tool_name}"
                     }
                 )
-        
-        elif request.method == "initialize":
-            return MCPResponse(
-                id=request.id,
-                result={
-                    "protocolVersion": "2024-11-05",
-                    "capabilities": {
-                        "tools": {},
-                        "resources": {}
-                    },
-                    "serverInfo": {
-                        "name": "mcp-knowledge-server",
-                        "version": "1.0.0"
-                    }
-                }
-            )
         
         else:
             return MCPResponse(
@@ -447,6 +477,18 @@ async def mcp_endpoint(request: MCPRequest):
                 "message": f"Internal error: {str(e)}"
             }
         )
+
+# Handle GET requests for notifications (required by MCP spec)
+@app.get("/mcp")
+async def mcp_get_endpoint():
+    """Handle GET requests for MCP notifications"""
+    return {"error": "MCP server requires POST requests for JSON-RPC calls"}
+
+# Handle OPTIONS for CORS preflight
+@app.options("/mcp")
+async def mcp_options():
+    """Handle CORS preflight requests"""
+    return {"status": "ok"}
 
 # Enhanced testing endpoints
 @app.get("/test/search")
