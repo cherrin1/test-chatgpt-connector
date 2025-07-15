@@ -1,5 +1,6 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from typing import List, Dict, Any, Optional
 import uvicorn
@@ -310,12 +311,52 @@ async def health_check():
     }
 
 @app.post("/mcp")
-async def mcp_endpoint(request: MCPRequest):
-    """Main MCP endpoint"""
+async def mcp_endpoint(request: Request):
+    """Main MCP endpoint with better error handling"""
     try:
-        if request.method == "initialize":
+        # Get raw body for debugging
+        body = await request.body()
+        print(f"Received request body: {body}")
+        
+        # Try to parse JSON
+        try:
+            json_data = await request.json()
+            print(f"Parsed JSON: {json_data}")
+        except Exception as e:
+            print(f"JSON parse error: {e}")
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "jsonrpc": "2.0",
+                    "error": {
+                        "code": -32700,
+                        "message": "Parse error"
+                    },
+                    "id": None
+                }
+            )
+        
+        # Convert to MCPRequest
+        try:
+            mcp_request = MCPRequest(**json_data)
+        except Exception as e:
+            print(f"MCP Request validation error: {e}")
+            return JSONResponse(
+                content={
+                    "jsonrpc": "2.0",
+                    "error": {
+                        "code": -32602,
+                        "message": f"Invalid params: {str(e)}"
+                    },
+                    "id": json_data.get("id")
+                }
+            )
+        
+        print(f"Processing method: {mcp_request.method}")
+        
+        if mcp_request.method == "initialize":
             return MCPResponse(
-                id=request.id,
+                id=mcp_request.id,
                 result={
                     "protocolVersion": "2024-11-05",
                     "capabilities": {
@@ -326,12 +367,11 @@ async def mcp_endpoint(request: MCPRequest):
                         "version": "1.0.0"
                     }
                 }
-            )
+            ).dict()
         
-        elif request.method == "tools/list":
-            # Return available tools
+        elif mcp_request.method == "tools/list":
             return MCPResponse(
-                id=request.id,
+                id=mcp_request.id,
                 result={
                     "tools": [
                         {
@@ -364,25 +404,27 @@ async def mcp_endpoint(request: MCPRequest):
                         }
                     ]
                 }
-            )
+            ).dict()
         
-        elif request.method == "tools/call":
-            tool_name = request.params.get("name")
-            arguments = request.params.get("arguments", {})
+        elif mcp_request.method == "tools/call":
+            params = mcp_request.params or {}
+            tool_name = params.get("name")
+            arguments = params.get("arguments", {})
+            
+            print(f"Tool call: {tool_name}, args: {arguments}")
             
             if tool_name == "search":
                 query = arguments.get("query", "")
                 if not query:
                     return MCPResponse(
-                        id=request.id,
+                        id=mcp_request.id,
                         error={
                             "code": -32602,
                             "message": "Query parameter required"
                         }
-                    )
+                    ).dict()
                 
                 results = search_knowledge(query)
-                # Return results in the exact format ChatGPT expects
                 search_results = [
                     {
                         "id": result.id,
@@ -394,7 +436,7 @@ async def mcp_endpoint(request: MCPRequest):
                 ]
                 
                 return MCPResponse(
-                    id=request.id,
+                    id=mcp_request.id,
                     result={
                         "content": [
                             {
@@ -403,23 +445,23 @@ async def mcp_endpoint(request: MCPRequest):
                             }
                         ]
                     }
-                )
+                ).dict()
             
             elif tool_name == "fetch":
                 doc_id = arguments.get("id", "")
                 if not doc_id:
                     return MCPResponse(
-                        id=request.id,
+                        id=mcp_request.id,
                         error={
                             "code": -32602,
                             "message": "ID parameter required"
                         }
-                    )
+                    ).dict()
                 
                 result = fetch_knowledge(doc_id)
                 if not result:
                     return MCPResponse(
-                        id=request.id,
+                        id=mcp_request.id,
                         result={
                             "content": [
                                 {
@@ -428,9 +470,8 @@ async def mcp_endpoint(request: MCPRequest):
                                 }
                             ]
                         }
-                    )
+                    ).dict()
                 
-                # Return fetch result in the exact format ChatGPT expects
                 fetch_result = {
                     "id": result.id,
                     "title": result.title,
@@ -440,7 +481,7 @@ async def mcp_endpoint(request: MCPRequest):
                 }
                 
                 return MCPResponse(
-                    id=request.id,
+                    id=mcp_request.id,
                     result={
                         "content": [
                             {
@@ -449,32 +490,39 @@ async def mcp_endpoint(request: MCPRequest):
                             }
                         ]
                     }
-                )
+                ).dict()
             
             else:
                 return MCPResponse(
-                    id=request.id,
+                    id=mcp_request.id,
                     error={
                         "code": -32601,
                         "message": f"Unknown tool: {tool_name}"
                     }
-                )
+                ).dict()
         
         else:
             return MCPResponse(
-                id=request.id,
+                id=mcp_request.id,
                 error={
                     "code": -32601,
-                    "message": f"Unknown method: {request.method}"
+                    "message": f"Unknown method: {mcp_request.method}"
                 }
-            )
+            ).dict()
     
     except Exception as e:
-        return MCPResponse(
-            id=request.id,
-            error={
-                "code": -32603,
-                "message": f"Internal error: {str(e)}"
+        print(f"Unexpected error: {e}")
+        import traceback
+        traceback.print_exc()
+        return JSONResponse(
+            status_code=500,
+            content={
+                "jsonrpc": "2.0",
+                "error": {
+                    "code": -32603,
+                    "message": f"Internal error: {str(e)}"
+                },
+                "id": None
             }
         )
 
