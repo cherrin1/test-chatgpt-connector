@@ -422,10 +422,10 @@ async def mcp_endpoint(request: Request):
                     "protocolVersion": "2024-11-05",
                     "capabilities": {
                         "resources": {},
-                        "tools": {}  # Limited tools for ChatGPT compatibility
+                        "tools": {}
                     },
                     "serverInfo": {
-                        "name": "mcp-connexpay-fintech-server-chatgpt",
+                        "name": "mcp-connexpay-fintech-server",
                         "version": "1.0.0"
                     }
                 }
@@ -477,14 +477,13 @@ async def mcp_endpoint(request: Request):
             ).dict()
         
         elif mcp_request.method == "tools/list":
-            # Limited tools for ChatGPT compatibility
             return MCPResponse(
                 id=mcp_request.id,
                 result={
                     "tools": [
                         {
                             "name": "search",
-                            "description": "Search through ConnexPay and FinTech knowledge base",
+                            "description": "Search through ConnexPay and FinTech knowledge base covering B2B payments, virtual cards, AP automation, and financial technology",
                             "inputSchema": {
                                 "type": "object",
                                 "properties": {
@@ -494,6 +493,20 @@ async def mcp_endpoint(request: Request):
                                     }
                                 },
                                 "required": ["query"]
+                            }
+                        },
+                        {
+                            "name": "fetch",
+                            "description": "Fetch complete ConnexPay or FinTech knowledge article by ID",
+                            "inputSchema": {
+                                "type": "object",
+                                "properties": {
+                                    "id": {
+                                        "type": "string",
+                                        "description": "Document ID to fetch"
+                                    }
+                                },
+                                "required": ["id"]
                             }
                         }
                     ]
@@ -534,6 +547,50 @@ async def mcp_endpoint(request: Request):
                             {
                                 "type": "text",
                                 "text": json.dumps(search_results, indent=2)
+                            }
+                        ]
+                    }
+                ).dict()
+            elif tool_name == "fetch":
+                doc_id = arguments.get("id", "")
+                if not doc_id:
+                    return MCPResponse(
+                        id=mcp_request.id,
+                        error={
+                            "code": -32602,
+                            "message": "ID parameter required"
+                        }
+                    ).dict()
+                
+                result = fetch_knowledge(doc_id)
+                if not result:
+                    return MCPResponse(
+                        id=mcp_request.id,
+                        result={
+                            "content": [
+                                {
+                                    "type": "text",
+                                    "text": json.dumps({"error": f"Document with ID '{doc_id}' not found"})
+                                }
+                            ]
+                        }
+                    ).dict()
+                
+                fetch_result = {
+                    "id": result.id,
+                    "title": result.title,
+                    "text": result.text,
+                    "url": result.url,
+                    "metadata": result.metadata
+                }
+                
+                return MCPResponse(
+                    id=mcp_request.id,
+                    result={
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": json.dumps(fetch_result, indent=2)
                             }
                         ]
                     }
