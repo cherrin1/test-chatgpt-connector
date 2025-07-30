@@ -216,6 +216,7 @@ async def mcp_handler(request: Request):
             else:
                 raise ValueError(f"Unknown tool: {tool}")
 
+        # 🔥 fallback only after checking every known method
         raise ValueError(f"Unknown method: {mcp_req.method}")
 
     except Exception as e:
