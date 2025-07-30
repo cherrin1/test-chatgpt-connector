@@ -2,7 +2,7 @@ apiVersion: 2022-10-01
 location: westus2
 name: chat-mcp-server
 properties:
-  managedEnvironmentId: /subscriptions/e382456f-7260-4e9c-961c-93cbbef14f4f/resourceGroups/Caitlyn_res/providers/Microsoft.App/managedEnvironments/chat-env
+  managedEnvironmentId: /subscriptions/e382456f-7260-4e9c-961c-93cbbef14f4f/resourceGroups/Caitlyn_res/providers/Microsoft.App/managedEnvironments/chat2-env
   configuration:
     activeRevisionsMode: single
     ingress:
@@ -12,7 +12,7 @@ properties:
       allowInsecure: false
     secrets:
       - name: registry-password
-        value: "{your-acr-password}"
+        value: "${{ secrets.REGISTRY_PASSWORD }}"
     registries:
       - server: caitlynregistry.azurecr.io
         username: caitlynregistry
