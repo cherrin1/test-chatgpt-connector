@@ -1,59 +1,28 @@
-apiVersion: 2022-10-01
-location: westus2
-name: chat-mcp-server
-properties:
-  managedEnvironmentId: /subscriptions/e382456f-7260-4e9c-961c-93cbbef14f4f/resourceGroups/Caitlyn_res/providers/Microsoft.App/managedEnvironments/chat2-env
-  configuration:
-    activeRevisionsMode: single
-    ingress:
-      external: true
-      targetPort: 8000
-      transport: http
-      allowInsecure: false
-    secrets:
-      - name: registry-password
-        value: "${{ secrets.REGISTRY_PASSWORD }}"
-    registries:
-      - server: caitlynregistry.azurecr.io
-        username: caitlynregistry
-        passwordSecretRef: registry-password
-  template:
-    containers:
-      - name: chat-mcp-server
-        image: caitlynregistry.azurecr.io/mcp-server:latest
-        env:
-          - name: PORT
-            value: "8000"
-          - name: LOG_LEVEL
-            value: "INFO"
-          - name: PYTHONUNBUFFERED
-            value: "1"
-        resources:
-          cpu: 0.5
-          memory: 1.0Gi
-        probes:
-          - type: liveness
-            httpGet:
-              path: "/health"
-              port: 8000
-            initialDelaySeconds: 30
-            periodSeconds: 10
-          - type: readiness
-            httpGet:
-              path: "/health"
-              port: 8000
-            initialDelaySeconds: 5
-            periodSeconds: 5
-    scale:
-      minReplicas: 1
-      maxReplicas: 3
-      rules:
-        - name: http-scaling
-          http:
-            metadata:
-              concurrentRequests: "20"
-tags:
-  Environment: Production
-  Service: MCP
-  Integration: ChatGPT
-  Type: KnowledgeServer
+name: Deploy to ACR
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v3
+
+      - name: Log in to ACR
+        uses: docker/login-action@v3
+        with:
+          registry: caitlynregistry.azurecr.io
+          username: caitlynregistry
+          password: ${{ secrets.REGISTRY_PASSWORD }}
+
+      - name: Build and push image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: caitlynregistry.azurecr.io/mcp-server:latest
