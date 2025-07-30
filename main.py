@@ -134,6 +134,12 @@ async def mcp_handler(request: Request):
                 "serverInfo": {"name": "mcp-connexpay-fintech-server", "version": "1.0.0"}
             }).dict()
 
+        elif mcp_req.method == "notifications/initialized":
+            return MCPResponse(id=mcp_req.id, result={
+                "status": "ok",
+                "timestamp": datetime.utcnow().isoformat()
+            }).dict()
+
         elif mcp_req.method == "resources/list":
             resources = [{
                 "uri": f"knowledge://{doc['id']}",
