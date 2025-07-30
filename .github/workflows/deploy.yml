@@ -8,7 +8,7 @@ on:
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
-
+    environment: chat env  # 👈 This is REQUIRED to access your environment secret
     steps:
       - name: Checkout repo
         uses: actions/checkout@v3
