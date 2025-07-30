@@ -106,6 +106,10 @@ def fetch_knowledge(doc_id: str) -> Optional[FetchResult]:
 
 # ──────────────── Endpoints ──────────────── #
 
+@app.get("/")
+async def root():
+    return {"message": "MCP server running"}
+
 @app.get("/health")
 async def health_check():
     return {
@@ -119,27 +123,28 @@ async def health_check():
 @app.post("/mcp")
 async def mcp_handler(request: Request):
     try:
-        json_data = await request.json()
-        mcp_req = MCPRequest(**json_data)
+        try:
+            json_data = await request.json()
+            mcp_req = MCPRequest(**json_data)
+        except Exception:
+            raise HTTPException(status_code=400, detail="Invalid MCP JSON-RPC request")
 
-        logger.info(f"Received MCP method: {repr(mcp_req.method)}")
+        logger.info(f"Received MCP method: {mcp_req.method}")
 
-        method = mcp_req.method.strip()
-
-        if method == "initialize":
+        if mcp_req.method == "initialize":
             return MCPResponse(id=mcp_req.id, result={
                 "protocolVersion": "2024-11-05",
                 "capabilities": {"resources": {}, "tools": {}},
                 "serverInfo": {"name": "mcp-connexpay-fintech-server", "version": "1.0.0"}
             }).dict()
 
-        elif method == "notifications/initialized":
+        elif mcp_req.method == "notifications/initialized":
             return MCPResponse(id=mcp_req.id, result={
                 "status": "ok",
                 "timestamp": datetime.utcnow().isoformat()
             }).dict()
 
-        elif method == "resources/list":
+        elif mcp_req.method == "resources/list":
             resources = [{
                 "uri": f"knowledge://{doc['id']}",
                 "name": doc["title"],
@@ -150,7 +155,7 @@ async def mcp_handler(request: Request):
 
             return MCPResponse(id=mcp_req.id, result={"resources": resources}).dict()
 
-        elif method == "resources/read":
+        elif mcp_req.method == "resources/read":
             uri = mcp_req.params.get("uri", "")
             if uri.startswith("knowledge://"):
                 doc_id = uri.split("knowledge://")[1]
@@ -168,7 +173,7 @@ async def mcp_handler(request: Request):
                 "code": -32602, "message": f"Resource not found: {uri}"
             }).dict()
 
-        elif method == "tools/list":
+        elif mcp_req.method == "tools/list":
             return MCPResponse(id=mcp_req.id, result={
                 "tools": [
                     {
@@ -188,10 +193,9 @@ async def mcp_handler(request: Request):
                 ]
             }).dict()
 
-        elif method == "tools/call":
+        elif mcp_req.method == "tools/call":
             tool = mcp_req.params.get("name")
             args = mcp_req.params.get("arguments", {})
-
             if tool == "search":
                 query = args.get("query", "").strip()
                 if not query:
@@ -201,7 +205,6 @@ async def mcp_handler(request: Request):
                     "type": "text",
                     "text": json.dumps([r.dict() for r in results], indent=2)
                 }]}).dict()
-
             elif tool == "fetch":
                 doc_id = args.get("id", "")
                 result = fetch_knowledge(doc_id)
@@ -214,11 +217,11 @@ async def mcp_handler(request: Request):
                     "type": "text",
                     "text": json.dumps(result.dict(), indent=2)
                 }]}).dict()
+            else:
+                raise ValueError(f"Unknown tool: {tool}")
 
-            raise ValueError(f"Unknown tool: {tool}")
-
-        # If method not matched
-        raise ValueError(f"Unknown method: {method}")
+        else:
+            raise ValueError(f"Unknown method: {mcp_req.method}")
 
     except Exception as e:
         logger.exception("Unhandled exception in /mcp")
